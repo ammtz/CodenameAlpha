@@ -1,0 +1,172 @@
+import type { OptimizationResult, RiskAnalysisResult } from "./types";
+
+// Mock data for optimization results
+export const mockOptimizationResults: OptimizationResult = {
+  scenarios: [
+    {
+      risk: 8.2,
+      alpha: 5.4,
+      allocations: {
+        VTI: 20,
+        VXUS: 10,
+        BND: 60,
+        VTIP: 10,
+        VNQ: 0,
+        GLD: 0,
+      },
+    },
+    {
+      risk: 10.5,
+      alpha: 7.2,
+      allocations: {
+        VTI: 35,
+        VXUS: 15,
+        BND: 40,
+        VTIP: 5,
+        VNQ: 5,
+        GLD: 0,
+      },
+    },
+    {
+      risk: 12.8,
+      alpha: 8.7,
+      allocations: {
+        VTI: 45,
+        VXUS: 25,
+        BND: 20,
+        VTIP: 0,
+        VNQ: 5,
+        GLD: 5,
+      },
+    },
+    {
+      risk: 15.3,
+      alpha: 10.1,
+      allocations: {
+        VTI: 55,
+        VXUS: 30,
+        BND: 5,
+        VTIP: 0,
+        VNQ: 5,
+        GLD: 5,
+      },
+    },
+    {
+      risk: 18.7,
+      alpha: 11.5,
+      allocations: {
+        VTI: 65,
+        VXUS: 25,
+        BND: 0,
+        VTIP: 0,
+        VNQ: 5,
+        GLD: 5,
+      },
+    },
+  ],
+  currentAllocation: {
+    VTI: 40,
+    VXUS: 20,
+    BND: 30,
+    VTIP: 10,
+    VNQ: 0,
+    GLD: 0,
+  },
+};
+
+// Mock data for risk analysis results
+export const mockRiskAnalysisResults: RiskAnalysisResult = {
+  allocation: {
+    VTI: 45,
+    VXUS: 25,
+    BND: 20,
+    VTIP: 10,
+  },
+  performanceMetrics: {
+    "Annual Return": 8.7,
+    "Cumulative Return (5Y)": 51.2,
+    "Sharpe Ratio": 0.68,
+    "Sortino Ratio": 0.92,
+    Alpha: 1.2,
+    Beta: 0.85,
+  },
+  riskMetrics: {
+    "Standard Deviation": 12.8,
+    "Downside Deviation": 8.4,
+    "Maximum Drawdown": 22.5,
+    "Worst Month": -8.3,
+    "Best Month": 9.1,
+    "Positive Months (%)": 62,
+  },
+  historicalPerformance: [
+    { date: "Jan 2019", value: 4.2 },
+    { date: "Feb 2019", value: 3.1 },
+    { date: "Mar 2019", value: 1.8 },
+    { date: "Apr 2019", value: 2.9 },
+    { date: "May 2019", value: -3.2 },
+    { date: "Jun 2019", value: 5.7 },
+    { date: "Jul 2019", value: 1.2 },
+    { date: "Aug 2019", value: -1.8 },
+    { date: "Sep 2019", value: 2.3 },
+    { date: "Oct 2019", value: 1.9 },
+    { date: "Nov 2019", value: 3.4 },
+    { date: "Dec 2019", value: 2.8 },
+    { date: "Jan 2020", value: -0.5 },
+    { date: "Feb 2020", value: -7.8 },
+    { date: "Mar 2020", value: -12.4 },
+    { date: "Apr 2020", value: 9.1 },
+    { date: "May 2020", value: 5.2 },
+    { date: "Jun 2020", value: 2.8 },
+    { date: "Jul 2020", value: 4.7 },
+    { date: "Aug 2020", value: 5.1 },
+    { date: "Sep 2020", value: -2.7 },
+    { date: "Oct 2020", value: -1.9 },
+    { date: "Nov 2020", value: 8.5 },
+    { date: "Dec 2020", value: 3.2 },
+  ],
+  drawdowns: [22.5, 15.3, 12.8, 9.4, 7.2],
+  correlationMatrix: {
+    VTI: {
+      VTI: 1.0,
+      VXUS: 0.85,
+      BND: 0.12,
+      VTIP: 0.08,
+    },
+    VXUS: {
+      VTI: 0.85,
+      VXUS: 1.0,
+      BND: 0.15,
+      VTIP: 0.1,
+    },
+    BND: {
+      VTI: 0.12,
+      VXUS: 0.15,
+      BND: 1.0,
+      VTIP: 0.65,
+    },
+    VTIP: {
+      VTI: 0.08,
+      VXUS: 0.1,
+      BND: 0.65,
+      VTIP: 1.0,
+    },
+  },
+  stressTests: {
+    "Market Crash (-20%)": -12.5,
+    "Rising Interest Rates (+1%)": -3.8,
+    "Inflation Spike (+3%)": 2.1,
+    "Economic Recession": -8.7,
+    "Tech Bubble Burst": -5.2,
+    "Commodity Boom": 4.3,
+    "Dollar Strength (+10%)": -2.9,
+    "Dollar Weakness (-10%)": 3.5,
+  },
+  valueAtRisk: {
+    "95%": 8.5,
+    "99%": 12.3,
+  },
+  expectedShortfall: {
+    "95%": 10.7,
+    "99%": 15.2,
+  },
+};
