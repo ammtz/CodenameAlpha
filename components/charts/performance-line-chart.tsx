@@ -17,11 +17,28 @@ interface PerformanceLineChartProps {
   compareWithInflation: boolean;
 }
 
-// Generate placeholder data based on time period
-const generateData = (period: string) => {
+// Simulate market events and trends
+const generateMarketEvent = (baseValue: number, eventType: string): number => {
+  switch (eventType) {
+    case "crash":
+      return baseValue * (0.85 + Math.random() * 0.05); // -10% to -15%
+    case "rally":
+      return baseValue * (1.08 + Math.random() * 0.04); // +8% to +12%
+    case "correction":
+      return baseValue * (0.92 + Math.random() * 0.03); // -5% to -8%
+    case "recovery":
+      return baseValue * (1.04 + Math.random() * 0.03); // +4% to +7%
+    default:
+      return baseValue * (0.99 + Math.random() * 0.02); // -1% to +1%
+  }
+};
+
+// Generate realistic market data
+const generateHistoricalData = (period: string) => {
   const data = [];
   let months = 12;
-
+  
+  // Define period length
   switch (period) {
     case "YTD":
       months = new Date().getMonth() + 1;
@@ -33,38 +50,70 @@ const generateData = (period: string) => {
       months = 60;
       break;
     case "All":
-      months = 120;
+      months = 120; // 10 years
       break;
   }
 
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - months);
 
-  let portfolioValue = 100000;
-  let sp500Value = 100000;
-  let inflationValue = 100000;
+  // Initialize values
+  let portfolioValue = 100;
+  let sp500Value = 100;
+  let inflationValue = 100;
 
+  // Define major events for different time periods
+  const events: { [key: string]: string } = {
+    "Mar 2020": "crash",    // COVID crash
+    "Apr 2020": "rally",    // Recovery begins
+    "Jan 2021": "rally",    // Bull market
+    "Jan 2022": "correction", // Rate hikes begin
+    "Oct 2022": "correction", // Bear market
+    "Jan 2023": "recovery",   // Recovery
+    "Jul 2023": "rally",     // AI boom
+    "Oct 2023": "correction", // Rate concerns
+    "Jan 2024": "rally",     // Fed pivot hopes
+  };
+
+  // Generate monthly data
   for (let i = 0; i <= months; i++) {
-    const date = new Date(startDate);
-    date.setMonth(date.getMonth() + i);
+    const currentDate = new Date(startDate);
+    currentDate.setMonth(currentDate.getMonth() + i);
+    
+    const dateKey = currentDate.toLocaleDateString("en-US", {
+      month: "short",
+      year: "numeric",
+    });
 
-    // Simulate some random growth with overall upward trend
-    const portfolioGrowth = 1 + (Math.random() * 0.03 - 0.01);
-    const sp500Growth = 1 + (Math.random() * 0.04 - 0.015);
-    const inflationGrowth = 1 + Math.random() * 0.005;
+    // Check for major events
+    const eventType = events[dateKey] || "normal";
 
-    portfolioValue *= portfolioGrowth;
-    sp500Value *= sp500Growth;
-    inflationValue *= inflationGrowth;
+    // Apply market events with different impacts for each asset class
+    if (eventType !== "normal") {
+      portfolioValue = generateMarketEvent(portfolioValue, eventType);
+      sp500Value = generateMarketEvent(sp500Value, eventType);
+      // Inflation is less volatile but follows trends
+      inflationValue = generateMarketEvent(inflationValue, "normal");
+    } else {
+      // Normal market behavior
+      // Portfolio (more stable due to diversification)
+      portfolioValue *= (0.995 + Math.random() * 0.015);
+      // S&P 500 (more volatile)
+      sp500Value *= (0.99 + Math.random() * 0.02);
+      // Inflation (slow steady growth)
+      inflationValue *= (1.002 + Math.random() * 0.001);
+    }
+
+    // Add some noise to prevent perfectly smooth lines
+    const noise = 0.002;
+    portfolioValue *= (1 - noise + Math.random() * (noise * 2));
+    sp500Value *= (1 - noise + Math.random() * (noise * 2));
 
     data.push({
-      date: date.toLocaleDateString("en-US", {
-        month: "short",
-        year: "numeric",
-      }),
-      portfolio: Math.round(portfolioValue),
-      sp500: Math.round(sp500Value),
-      inflation: Math.round(inflationValue),
+      date: dateKey,
+      portfolio: Math.round((portfolioValue - 100) * 100) / 100,
+      sp500: Math.round((sp500Value - 100) * 100) / 100,
+      inflation: Math.round((inflationValue - 100) * 100) / 100,
     });
   }
 
@@ -76,7 +125,7 @@ export function PerformanceLineChart({
   compareWithSP500,
   compareWithInflation,
 }: PerformanceLineChartProps) {
-  const data = generateData(timePeriod);
+  const data = generateHistoricalData(timePeriod);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -103,9 +152,7 @@ export function PerformanceLineChart({
           tick={{ fontSize: 12 }}
           tickMargin={10}
           tickFormatter={(value) => {
-            // Show fewer ticks on mobile
             if (window.innerWidth < 768) {
-              // Only show every 3rd tick
               const index = data.findIndex((item) => item.date === value);
               return index % 3 === 0 ? value : "";
             }
@@ -115,12 +162,13 @@ export function PerformanceLineChart({
         <YAxis
           tick={{ fontSize: 12 }}
           tickMargin={10}
-          tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+          tickFormatter={(value) => `${value.toFixed(1)}%`}
+          domain={['auto', 'auto']}
         />
         <CartesianGrid strokeDasharray="3 3" />
         <Tooltip
           formatter={(value) => [
-            `$${Number(value).toLocaleString()}`,
+            `${Number(value).toFixed(2)}%`,
             undefined,
           ]}
           labelFormatter={(label) => `Date: ${label}`}

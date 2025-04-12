@@ -159,61 +159,43 @@ export default function OptimizationResults({
             <div className="space-y-4">
               <div className="text-sm">
                 <div className="font-medium mb-2">
-                  Scenario{" "}
-                  {selectedScenario !== null ? selectedScenario + 1 : ""}{" "}
-                  Allocations
+                  Allocation Changes from Current Portfolio
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(selectedScenarioData.allocations).map(
-                    ([ticker, allocation]) => (
+                <div className="space-y-2">
+                  {Object.entries(selectedScenarioData.allocations).map(([ticker, allocation]) => {
+                    const currentAllocation = results.currentAllocation[ticker] || 0;
+                    const change = allocation - currentAllocation;
+                    
+                    // Calculate color based on change magnitude
+                    let color;
+                    if (change <= -10) color = "rgb(220, 38, 38)"; // dark red
+                    else if (change <= -5) color = "rgb(239, 68, 68)"; // red
+                    else if (change <= -2) color = "rgb(251, 146, 60)"; // orange
+                    else if (change <= -0.5) color = "rgb(251, 191, 36)"; // amber
+                    else if (change < 0.5) color = "rgb(163, 163, 163)"; // gray
+                    else if (change < 2) color = "rgb(163, 230, 53)"; // lime
+                    else if (change < 5) color = "rgb(34, 197, 94)"; // green
+                    else if (change < 10) color = "rgb(21, 128, 61)"; // emerald
+                    else color = "rgb(4, 120, 87)"; // dark green
+
+                    return (
                       <div
                         key={ticker}
-                        className="flex items-center justify-between p-2 bg-muted rounded"
+                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                       >
-                        <span className="font-medium">{ticker}</span>
-                        <span>{allocation}%</span>
+                        <div className="font-medium w-16">{ticker}</div>
+                        <div className="flex items-center gap-2">
+                          <span style={{ color }}>
+                            {change > 0 ? "+" : ""}{change.toFixed(1)}%
+                          </span>
+                          <span className="text-muted-foreground">
+                            ({currentAllocation.toFixed(1)}% → {allocation.toFixed(1)}%)
+                          </span>
+                        </div>
                       </div>
-                    )
-                  )}
+                    );
+                  })}
                 </div>
-              </div>
-
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={[
-                      { name: "Current", ...results.currentAllocation },
-                      {
-                        name: "Optimized",
-                        ...selectedScenarioData.allocations,
-                      },
-                    ]}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis
-                      label={{
-                        value: "Allocation (%)",
-                        angle: -90,
-                        position: "insideLeft",
-                      }}
-                    />
-                    <Tooltip formatter={(value) => [`${value}%`, ""]} />
-                    {Object.keys(selectedScenarioData.allocations).map(
-                      (ticker, index) => (
-                        <Line
-                          key={ticker}
-                          type="monotone"
-                          dataKey={ticker}
-                          stroke={`hsl(${index * 30}, 70%, 50%)`}
-                          strokeWidth={2}
-                          activeDot={{ r: 8 }}
-                        />
-                      )
-                    )}
-                  </LineChart>
-                </ResponsiveContainer>
               </div>
             </div>
           ) : (

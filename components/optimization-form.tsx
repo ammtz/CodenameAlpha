@@ -2,14 +2,31 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+import { Progress } from "@/components/ui/progress";
 import { Plus, Trash2 } from "lucide-react";
 import type { PortfolioAllocation, OptimizationParams } from "@/lib/types";
 import { handlePortfolioAllocationChange } from "@/lib/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 interface OptimizationFormProps {
   initialPortfolio: PortfolioAllocation;
@@ -30,148 +47,158 @@ export default function OptimizationForm({
 }: OptimizationFormProps) {
   const [portfolio, setPortfolio] =
     useState<PortfolioAllocation>(initialPortfolio);
+  const [tickers, setTickers] = useState<string[]>(initialTickers);
+  const [params, setParams] = useState<OptimizationParams>(initialParams);
   const [newTicker, setNewTicker] = useState("");
   const [newAllocation, setNewAllocation] = useState("");
 
-  const [tickersToStudy, setTickersToStudy] =
-    useState<string[]>(initialTickers);
   const [newStudyTicker, setNewStudyTicker] = useState("");
 
-  const [alphaTarget, setAlphaTarget] = useState(initialParams.alphaTarget);
-  const [riskLevel, setRiskLevel] = useState(initialParams.riskLevel);
-
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Add refs for debouncing
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastChangeRef = useRef<{
+    portfolio: PortfolioAllocation;
+    ticker: string;
+    value: number;
+  } | null>(null);
 
-  const addTicker = () => {
-    if (newTicker && newAllocation) {
-      // Calculate how much to reduce other allocations
-      const newAllocationValue = Math.round(Number(newAllocation) * 10) / 10;
-      const currentTotal = Object.values(portfolio).reduce(
-        (sum, val) => sum + val,
-        0
-      );
-      const remainingAllocation = 100 - currentTotal;
-
-      if (newAllocationValue > remainingAllocation) {
-        // Need to reduce other allocations
-        const updatedPortfolio = handlePortfolioAllocationChange(
-          { ...portfolio, [newTicker.toUpperCase()]: 0 },
-          newTicker.toUpperCase(),
-          newAllocationValue
-        );
-        setPortfolio(updatedPortfolio);
-      } else {
-        // Can simply add without adjusting others
-        setPortfolio({
-          ...portfolio,
-          [newTicker.toUpperCase()]: newAllocationValue,
-        });
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
+    };
+  }, []);
 
-      // Final check to ensure total is exactly 100%
-      const finalTotal = Object.values(portfolio).reduce(
-        (sum, val) => sum + val,
-        0
+  const checkAndRebalance = (updatedPortfolio: PortfolioAllocation, ticker: string, value: number) => {
+    const totalAllocation = Object.values(updatedPortfolio).reduce(
+      (sum, val) => sum + val,
+      0
+    );
+
+    if (Math.abs(totalAllocation - 100) > 0.01) {
+      const shouldRebalance = window.confirm(
+        `Portfolio total is ${totalAllocation.toFixed(1)}%. Would you like to proportionally rebalance other allocations based on the new value for ${ticker}?`
       );
-      if (Math.abs(finalTotal - 100) < 0.1 && finalTotal !== 100) {
-        const keys = Object.keys(portfolio);
-        for (const key of keys) {
-          if (portfolio[key] > 0) {
-            portfolio[key] =
-              Math.round((portfolio[key] + (100 - finalTotal)) * 10) / 10;
-            break;
+
+      if (shouldRebalance) {
+        // Create a new portfolio object to store the rebalanced values
+        const rebalancedPortfolio = { ...updatedPortfolio };
+        
+        // Lock in the changed ticker's value
+        rebalancedPortfolio[ticker] = value;
+        
+        // Calculate remaining percentage to distribute
+        const remaining = 100 - value;
+        
+        // Get other tickers and their current allocations
+        const otherTickers = Object.entries(updatedPortfolio)
+          .filter(([key]) => key !== ticker);
+        
+        const otherSum = otherTickers.reduce((sum, [_, val]) => sum + val, 0);
+
+        if (otherSum === 0 || otherTickers.length === 0) {
+          // If no other allocations or they sum to 0, distribute equally
+          const equalShare = remaining / otherTickers.length;
+          otherTickers.forEach(([t]) => {
+            rebalancedPortfolio[t] = parseFloat(equalShare.toFixed(1));
+          });
+        } else {
+          // Distribute proportionally based on original ratios
+          otherTickers.forEach(([t, originalValue]) => {
+            const proportion = originalValue / otherSum;
+            rebalancedPortfolio[t] = parseFloat((remaining * proportion).toFixed(1));
+          });
+        }
+
+        // Fix any rounding errors by adjusting the largest allocation
+        const finalTotal = Object.values(rebalancedPortfolio).reduce((sum, val) => sum + val, 0);
+        if (Math.abs(finalTotal - 100) > 0.01) {
+          const diff = 100 - finalTotal;
+          const largestOtherTicker = otherTickers
+            .reduce((max, [currTicker, currValue]) => 
+              currValue > (max ? updatedPortfolio[max] : 0) ? currTicker : max,
+              ''
+            );
+            
+          if (largestOtherTicker) {
+            rebalancedPortfolio[largestOtherTicker] = parseFloat(
+              (rebalancedPortfolio[largestOtherTicker] + diff).toFixed(1)
+            );
           }
         }
-      }
 
+        setPortfolio(rebalancedPortfolio);
+      }
+    }
+  };
+
+  const handlePortfolioChange = (ticker: string, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    const updatedPortfolio = {
+      ...portfolio,
+      [ticker]: numValue,
+    };
+    
+    // Update the portfolio immediately
+    setPortfolio(updatedPortfolio);
+
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Store the latest change
+    lastChangeRef.current = {
+      portfolio: updatedPortfolio,
+      ticker,
+      value: numValue,
+    };
+
+    // Set new timeout for rebalancing check
+    timeoutRef.current = setTimeout(() => {
+      const lastChange = lastChangeRef.current;
+      if (lastChange) {
+        checkAndRebalance(lastChange.portfolio, lastChange.ticker, lastChange.value);
+      }
+    }, 5000); // 5 seconds delay
+  };
+
+  const handleAddTicker = () => {
+    if (newTicker && newAllocation && !tickers.includes(newTicker)) {
+      setTickers([...tickers, newTicker]);
+      setPortfolio((prev) => ({
+        ...prev,
+        [newTicker]: parseFloat(newAllocation) || 0,
+      }));
       setNewTicker("");
       setNewAllocation("");
     }
   };
 
-  const removeTicker = (ticker: string) => {
-    const tickerValue = portfolio[ticker];
-    const updatedPortfolio = { ...portfolio };
-    delete updatedPortfolio[ticker];
-
-    // Redistribute the removed ticker's allocation proportionally
-    if (Object.keys(updatedPortfolio).length > 0) {
-      const remainingTotal = Object.values(updatedPortfolio).reduce(
-        (sum, val) => sum + val,
-        0
-      );
-
-      if (remainingTotal === 0) {
-        // If all remaining allocations are 0, distribute equally
-        const equalShare =
-          Math.round((100 / Object.keys(updatedPortfolio).length) * 10) / 10;
-        Object.keys(updatedPortfolio).forEach((t) => {
-          updatedPortfolio[t] = equalShare;
-        });
-
-        // Adjust to ensure total is exactly 100
-        const adjustedTotal = Object.values(updatedPortfolio).reduce(
-          (sum, val) => sum + val,
-          0
-        );
-        if (adjustedTotal !== 100) {
-          const firstTicker = Object.keys(updatedPortfolio)[0];
-          updatedPortfolio[firstTicker] += 100 - adjustedTotal;
-        }
-      } else {
-        // Distribute proportionally
-        Object.keys(updatedPortfolio).forEach((t) => {
-          const proportion = updatedPortfolio[t] / remainingTotal;
-          updatedPortfolio[t] =
-            Math.round((updatedPortfolio[t] + tickerValue * proportion) * 10) /
-            10;
-        });
-
-        // Ensure total is exactly 100
-        const newTotal = Object.values(updatedPortfolio).reduce(
-          (sum, val) => sum + val,
-          0
-        );
-        if (newTotal !== 100) {
-          const largestTicker = Object.keys(updatedPortfolio).reduce(
-            (max, curr) =>
-              updatedPortfolio[curr] > updatedPortfolio[max] ? curr : max,
-            Object.keys(updatedPortfolio)[0]
-          );
-          updatedPortfolio[largestTicker] += 100 - newTotal;
-        }
-      }
-    }
-
-    // Final check to ensure total is exactly 100%
-    const finalTotal = Object.values(updatedPortfolio).reduce(
-      (sum, val) => sum + val,
-      0
-    );
-    if (Math.abs(finalTotal - 100) < 0.1 && finalTotal !== 100) {
-      const keys = Object.keys(updatedPortfolio);
-      if (keys.length > 0) {
-        updatedPortfolio[keys[0]] =
-          Math.round((updatedPortfolio[keys[0]] + (100 - finalTotal)) * 10) /
-          10;
-      }
-    }
-
-    setPortfolio(updatedPortfolio);
+  const handleRemoveTicker = (tickerToRemove: string) => {
+    setTickers(tickers.filter((t) => t !== tickerToRemove));
+    setPortfolio((prev) => {
+      const { [tickerToRemove]: _, ...rest } = prev;
+      return rest;
+    });
   };
 
   const addStudyTicker = () => {
     if (
       newStudyTicker &&
-      !tickersToStudy.includes(newStudyTicker.toUpperCase())
+      !tickers.includes(newStudyTicker.toUpperCase())
     ) {
-      setTickersToStudy([...tickersToStudy, newStudyTicker.toUpperCase()]);
+      setTickers([...tickers, newStudyTicker.toUpperCase()]);
       setNewStudyTicker("");
     }
   };
 
   const removeStudyTicker = (ticker: string) => {
-    setTickersToStudy(tickersToStudy.filter((t) => t !== ticker));
+    setTickers(tickers.filter((t) => t !== ticker));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -189,7 +216,7 @@ export default function OptimizationForm({
       return;
     }
 
-    onRunOptimization(portfolio, tickersToStudy, { alphaTarget, riskLevel });
+    onRunOptimization(portfolio, tickers, params);
 
     setTimeout(() => {
       setIsLoading(false);
@@ -199,150 +226,97 @@ export default function OptimizationForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-medium mb-2">Current Portfolio</h3>
-          <div className="space-y-2">
-            {Object.entries(portfolio).map(([ticker, allocation]) => (
-              <div key={ticker} className="flex items-center gap-2">
-                <div className="w-24 bg-muted p-2 rounded text-center font-medium">
-                  {ticker}
-                </div>
-                <Slider
-                  value={[allocation]}
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  onValueChange={(value) => {
-                    const updatedPortfolio = handlePortfolioAllocationChange(
-                      portfolio,
-                      ticker,
-                      value[0]
-                    );
-                    setPortfolio(updatedPortfolio);
-                  }}
-                />
-                <span className="text-sm w-12 text-right">{allocation}%</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeTicker(ticker)}
-                  className="ml-auto h-8 w-8"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+        <div className="flex items-center justify-between">
+          <div className="font-medium">Current Portfolio Allocation</div>
+          <div className="text-sm text-muted-foreground">
+            Total: {Object.values(portfolio).reduce((sum, val) => sum + val, 0).toFixed(1)}%
           </div>
-
-          <div className="flex items-end gap-2 mt-2">
-            <div className="space-y-1 flex-1">
-              <Label htmlFor="newTicker">Ticker</Label>
-              <Input
-                id="newTicker"
-                value={newTicker}
-                onChange={(e) => setNewTicker(e.target.value)}
-                placeholder="e.g. VTI"
-              />
+        </div>
+        {Object.entries(portfolio).map(([ticker, allocation]) => (
+          <div key={ticker} className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>{ticker}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={allocation}
+                  onChange={(e) => handlePortfolioChange(ticker, e.target.value)}
+                  className="w-20"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
             </div>
-            <div className="space-y-1 w-24">
-              <Label htmlFor="newAllocation">Allocation</Label>
+            <Progress value={allocation} className="h-2" />
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        <div className="font-medium">Add New Ticker</div>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Label>Ticker</Label>
+            <Input
+              value={newTicker}
+              onChange={(e) => setNewTicker(e.target.value.toUpperCase())}
+              placeholder="e.g. VTI"
+            />
+          </div>
+          <div className="w-24">
+            <Label>Allocation</Label>
+            <div className="flex items-center gap-1">
               <Input
-                id="newAllocation"
                 type="number"
                 value={newAllocation}
                 onChange={(e) => setNewAllocation(e.target.value)}
                 min="0"
                 max="100"
                 step="0.1"
-                placeholder="e.g. 20"
+                placeholder="0.0"
               />
+              <span className="text-sm text-muted-foreground">%</span>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={addTicker}
-              className="h-10 w-10"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
-
-          <div className="text-xs text-muted-foreground mt-2">
-            Total:{" "}
-            {Object.values(portfolio)
-              .reduce((sum, value) => sum + value, 0)
-              .toFixed(1)}
-            % (should equal 100%)
-          </div>
+          <Button onClick={handleAddTicker} className="mb-0.5">Add</Button>
         </div>
+      </div>
 
-        <div>
-          <h3 className="text-sm font-medium mb-2">Tickers to Study</h3>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {tickersToStudy.map((ticker) => (
-              <div
-                key={ticker}
-                className="flex items-center bg-muted rounded-full px-3 py-1"
-              >
-                <span className="text-sm font-medium">{ticker}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeStudyTicker(ticker)}
-                  className="h-5 w-5 ml-1"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-2">
-            <Input
-              value={newStudyTicker}
-              onChange={(e) => setNewStudyTicker(e.target.value)}
-              placeholder="Add ticker to study"
-              className="flex-1"
-            />
-            <Button type="button" variant="outline" onClick={addStudyTicker}>
-              Add
-            </Button>
-          </div>
+      <div className="space-y-4">
+        <div className="font-medium">Optimization Parameters</div>
+        <div className="space-y-2">
+          <Label>Target Alpha (%)</Label>
+          <Input
+            type="number"
+            value={params.alphaTarget}
+            onChange={(e) =>
+              setParams((prev) => ({
+                ...prev,
+                alphaTarget: parseFloat(e.target.value) || 0,
+              }))
+            }
+            min="0"
+            max="20"
+            step="0.1"
+          />
         </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="alphaTarget">Alpha Target (%)</Label>
-              <span className="text-sm font-medium">{alphaTarget}%</span>
-            </div>
-            <Slider
-              id="alphaTarget"
-              min={0}
-              max={20}
-              step={0.5}
-              value={[alphaTarget]}
-              onValueChange={(value) => setAlphaTarget(value[0])}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="riskLevel">Risk Tolerance (1-10)</Label>
-              <span className="text-sm font-medium">{riskLevel}</span>
-            </div>
-            <Slider
-              id="riskLevel"
-              min={1}
-              max={10}
-              step={1}
-              value={[riskLevel]}
-              onValueChange={(value) => setRiskLevel(value[0])}
-            />
-          </div>
+        <div className="space-y-2">
+          <Label>Risk Level (1-10)</Label>
+          <Input
+            type="number"
+            value={params.riskLevel}
+            onChange={(e) =>
+              setParams((prev) => ({
+                ...prev,
+                riskLevel: parseFloat(e.target.value) || 1,
+              }))
+            }
+            min="1"
+            max="10"
+            step="0.1"
+          />
         </div>
       </div>
 
